@@ -22,6 +22,9 @@ app.get('/health', (req, res) => {
     res.status(200).json({ status: 'OK', message: 'Server is running' });
 });
 
+const sentimentRoute = require('./routes/sentimentRoute');
+app.use('/api/sentiment', sentimentRoute);
+
 // COMMENTED OUT: MongoDB connection removed to bypass dependency
 /*
 mongoose.connect(process.env.MONGO_URI, {
