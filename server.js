@@ -1,6 +1,6 @@
 // server.js
 const express = require('express');
-const mongoose = require('mongoose');
+// const mongoose = require('mongoose'); // COMMENTED OUT: MongoDB dependency removed
 const dotenv = require('dotenv');
 const scrapeRoute = require('./routes/scrapeRoute');
 const cors = require('cors');
@@ -22,6 +22,8 @@ app.get('/health', (req, res) => {
     res.status(200).json({ status: 'OK', message: 'Server is running' });
 });
 
+// COMMENTED OUT: MongoDB connection removed to bypass dependency
+/*
 mongoose.connect(process.env.MONGO_URI, {
     useNewUrlParser: true,
     useUnifiedTopology: true
@@ -31,3 +33,11 @@ mongoose.connect(process.env.MONGO_URI, {
         console.log("Server is running at port " + process.env.PORT);
     });
 }).catch(err => console.log(err));
+*/
+
+// DIRECT SERVER START: Bypass MongoDB and start server directly
+console.log("Starting server without MongoDB dependency...");
+app.listen(process.env.PORT || 5000, () => {
+    console.log("Server is running at port " + (process.env.PORT || 5000));
+    console.log("MongoDB dependency bypassed - running in stateless mode");
+});

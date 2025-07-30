@@ -1,5 +1,5 @@
 const puppeteer = require('puppeteer');
-const ScrapeResult = require('../models/ScrapeResult');
+// const ScrapeResult = require('../models/ScrapeResult'); // COMMENTED OUT: MongoDB model removed
 
 async function autoScroll(page) {
     await page.evaluate(async () => {
@@ -52,8 +52,14 @@ exports.scrapeContent = async (req, res) => {
 
         await browser.close();
 
+        // COMMENTED OUT: MongoDB save operation bypassed
+        /*
         const result = new ScrapeResult({ url, text, images });
         await result.save();
+        */
+        
+        // DIRECT RESPONSE: Return data without saving to database
+        console.log(`Scraped content from ${url} - ${text.length} characters, ${images.length} images`);
 
         res.json({
             url,
