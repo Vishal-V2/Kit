@@ -1,7 +1,7 @@
 const axios = require('axios');
 
 const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY
-const invokeUrl = "https://integrate.api.nvidia.com/v1/chat/completions";
+const invokeUrl = "https://ai.api.nvidia.com/v1/cv/hive/ai-generated-image-detection";
 
 exports.detectAIFromImageUrl = async (req, res) => {
     const { url } = req.body;
@@ -16,10 +16,44 @@ exports.detectAIFromImageUrl = async (req, res) => {
         });
 
         const buffer = Buffer.from(imageRes.data);
-        const type = imageType(buffer);
-
-        if (!type || !type.mime.startsWith('image/')) {
-            return res.status(400).json({ error: 'Invalid image format.' });
+        console.log('[DEBUG] Buffer length:', buffer.length);
+        console.log('[DEBUG] imageType function:', typeof imageType);
+        
+        let type = await imageType(buffer);
+        console.log('[DEBUG] Detected type:', type);
+        
+        // Handle SVG files explicitly since image-type doesn't detect them
+        if (!type) {
+            const bufferString = buffer.toString('utf8', 0, Math.min(buffer.length, 100));
+            if (bufferString.includes('<svg') || bufferString.includes('<?xml') && bufferString.includes('svg')) {
+                console.log('[DEBUG] Detected SVG file manually');
+                type = { ext: 'svg', mime: 'image/svg+xml' };
+            } else {
+                console.log('[DEBUG] No type detected and not SVG');
+                return res.status(400).json({ error: 'Unable to detect image type from buffer.' });
+            }
+        }
+        
+        if (!type.mime) {
+            console.log('[DEBUG] Type detected but no mime property:', type);
+            return res.status(400).json({ error: 'Image type detected but no MIME type available.' });
+        }
+        
+        console.log('[DEBUG] MIME type:', type.mime);
+        
+        if (!type.mime.startsWith('image/')) {
+            return res.status(400).json({ error: 'Invalid image format - not an image MIME type.' });
+        }
+        
+        // Check if the image format is supported by NVIDIA API (only PNG, JPG, JPEG)
+        const supportedFormats = ['image/png', 'image/jpeg', 'image/jpg'];
+        if (!supportedFormats.includes(type.mime.toLowerCase())) {
+            console.log('[DEBUG] Unsupported image format for NVIDIA API:', type.mime);
+            return res.status(400).json({ 
+                error: 'Unsupported image format', 
+                details: `NVIDIA API only supports PNG, JPG, JPEG formats. Got: ${type.mime}`,
+                skipAnalysis: true
+            });
         }
 
         const imageBase64 = buffer.toString('base64');
@@ -27,41 +61,46 @@ exports.detectAIFromImageUrl = async (req, res) => {
             return res.status(400).json({ error: 'Image too large for direct upload. Use NVIDIA assets API.' });
         }
 
-        console.log('[2] Preparing request to NVIDIA Phi-3.5 Vision...');
+        console.log('[2] Preparing request to NVIDIA AI-Generated Image Detection...');
 
         const payload = {
-            model: "microsoft/phi-3.5-vision-instruct",
-            messages: [
-                {
-                    role: "user",
-                    content: `On a scale of 0 to 100, what is the likelihood that this image is AI-generated? Return only the number.\n<img src="data:${type.mime};base64,${imageBase64}" />`
-                }
-            ],
-            max_tokens: 10,
-            temperature: 0.2,
-            top_p: 0.7,
-            stream: false
+            input: [`data:${type.mime};base64,${imageBase64}`]
         };
 
         const headers = {
             Authorization: `Bearer ${NVIDIA_API_KEY}`,
-            Accept: "application/json"
+            Accept: "application/json",
+            "Content-Type": "application/json"
         };
 
         const response = await axios.post(invokeUrl, payload, {
             headers: headers
         });
 
-        const text = response.data.choices?.[0]?.message?.content?.trim();
+        const data = response.data.data?.[0];
+        if (!data) {
+            throw new Error('Invalid response format from NVIDIA API');
+        }
 
-        const match = text.match(/(\d{1,3})/);
-        const percent = match ? Math.min(100, parseInt(match[1])) : null;
+        const aiLikelihood = Math.round(data.is_ai_generated * 100);
+        const possibleSources = data.possible_sources || {};
+        
+        // Get top 3 possible sources
+        const sortedSources = Object.entries(possibleSources)
+            .sort(([,a], [,b]) => b - a)
+            .slice(0, 3)
+            .map(([source, confidence]) => ({
+                source,
+                confidence: Math.round(confidence * 100 * 100) / 100 // Round to 2 decimal places
+            }));
 
-        console.log('[3] NVIDIA Response:', text);
+        console.log('[3] NVIDIA Response - AI Likelihood:', aiLikelihood + '%');
+        console.log('[3] Top 3 Sources:', sortedSources);
 
         res.json({
-            aiLikelihoodPercent: percent,
-            rawModelReply: text
+            aiLikelihoodPercent: aiLikelihood,
+            topSources: sortedSources,
+            rawModelReply: `AI Generated: ${aiLikelihood}% | Top Sources: ${sortedSources.map(s => `${s.source} (${s.confidence}%)`).join(', ')}`
         });
 
     } catch (err) {

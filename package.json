@@ -17,6 +17,7 @@
     "dotenv": "^17.2.1",
     "exif-parser": "^0.1.12",
     "express": "^5.1.0",
+    "i": "^0.3.7",
     "image-type": "^6.0.0",
     "mongoose": "^8.16.5",
     "puppeteer": "^24.15.0"
