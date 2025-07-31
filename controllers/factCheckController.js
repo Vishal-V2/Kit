@@ -3,79 +3,105 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // Model configuration with fallback
-const PRIMARY_MODEL = 'gemini-2.0-flash-exp';
-const FALLBACK_MODEL = 'gemini-1.5-flash';
+const NVIDIA_MODEL = 'meta/llama-4-maverick-17b-128e-instruct';
+const NVIDIA_API_URL = 'https://integrate.api.nvidia.com/v1/chat/completions';
+const GEMINI_PRIMARY_MODEL = 'gemini-2.0-flash-exp';
+const GEMINI_FALLBACK_MODEL = 'gemini-1.5-flash';
+
+// Helper function to call NVIDIA Llama model
+async function callNvidiaModel(prompt) {
+    const headers = {
+        "Authorization": `Bearer ${process.env.NVIDIA_API_KEY}`,
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+    };
+
+    const payload = {
+        "model": NVIDIA_MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 512,
+        "temperature": 1.00,
+        "top_p": 1.00,
+        "frequency_penalty": 0.00,
+        "presence_penalty": 0.00,
+        "stream": false
+    };
+
+    const response = await axios.post(NVIDIA_API_URL, payload, { headers });
+    return response.data.choices[0].message.content;
+}
 
 // Helper function to get Gemini model with fallback
 async function getGeminiModel(preferPrimary = true) {
     try {
         if (preferPrimary) {
-            console.log(`[MODEL] Attempting to use primary model: ${PRIMARY_MODEL}`);
-            return genAI.getGenerativeModel({ model: PRIMARY_MODEL });
+            console.log(`[MODEL] Attempting to use Gemini primary model: ${GEMINI_PRIMARY_MODEL}`);
+            return genAI.getGenerativeModel({ model: GEMINI_PRIMARY_MODEL });
         } else {
-            console.log(`[MODEL] Using fallback model: ${FALLBACK_MODEL}`);
-            return genAI.getGenerativeModel({ model: FALLBACK_MODEL });
+            console.log(`[MODEL] Using Gemini fallback model: ${GEMINI_FALLBACK_MODEL}`);
+            return genAI.getGenerativeModel({ model: GEMINI_FALLBACK_MODEL });
         }
     } catch (err) {
-        console.log(`[MODEL] Error getting model, using fallback: ${err.message}`);
-        return genAI.getGenerativeModel({ model: FALLBACK_MODEL });
+        console.log(`[MODEL] Error getting Gemini model, using fallback: ${err.message}`);
+        return genAI.getGenerativeModel({ model: GEMINI_FALLBACK_MODEL });
     }
 }
 
 // STEP 1: Extract claims from input text
 async function extractClaims(text) {
-    let model;
-    let usingPrimary = true;
-    
-    try {
-        console.log('[1] Extracting claims with Gemini...');
-        model = await getGeminiModel(true);
-
-        const prompt = `
+    const prompt = `
 Extract clear factual claims from this text. Return them as a plain numbered list:
 """${text}"""
-        `;
+    `;
 
+    // Try NVIDIA Llama model first (primary)
+    try {
+        console.log(`[1] Extracting claims with NVIDIA model: ${NVIDIA_MODEL}`);
+        const response = await callNvidiaModel(prompt);
+        const claims = response
+            .split('\n')
+            .filter(line => /^\d+[\).]/.test(line))
+            .map(line => line.replace(/^\d+[\).\s]*/, '').trim());
+
+        console.log(`[1.1] Found ${claims.length} claims using NVIDIA Llama model.`);
+        return claims;
+    } catch (err) {
+        console.error('[1-ERROR] NVIDIA Llama model failed:', err.message);
+    }
+
+    // Fallback to Gemini primary model
+    try {
+        console.log('[1-FALLBACK] Retrying with Gemini primary model...');
+        const model = await getGeminiModel(true);
         const result = await model.generateContent(prompt);
         const raw = await result.response.text();
         const claims = raw
             .split('\n')
             .filter(line => /^\d+[\).]/.test(line))
-            .map(line => line.replace(/^\d+[\).]\s*/, '').trim());
+            .map(line => line.replace(/^\d+[\).\s]*/, '').trim());
 
-        console.log(`[1.1] Found ${claims.length} claims using ${usingPrimary ? 'primary' : 'fallback'} model.`);
+        console.log(`[1.1] Found ${claims.length} claims using Gemini primary model.`);
         return claims;
     } catch (err) {
-        console.error('[1-ERROR] Failed to extract claims:', err.message);
-        
-        // Try fallback model if primary failed
-        if (usingPrimary) {
-            console.log('[1-FALLBACK] Retrying with fallback model...');
-            try {
-                usingPrimary = false;
-                model = await getGeminiModel(false);
-                
-                const prompt = `
-Extract clear factual claims from this text. Return them as a plain numbered list:
-"""${text}"""
-                `;
+        console.error('[1-ERROR] Gemini primary model failed:', err.message);
+    }
 
-                const result = await model.generateContent(prompt);
-                const raw = await result.response.text();
-                const claims = raw
-                    .split('\n')
-                    .filter(line => /^\d+[\).]/.test(line))
-                    .map(line => line.replace(/^\d+[\).]\s*/, '').trim());
+    // Final fallback to Gemini fallback model
+    try {
+        console.log('[1-FALLBACK] Retrying with Gemini fallback model...');
+        const model = await getGeminiModel(false);
+        const result = await model.generateContent(prompt);
+        const raw = await result.response.text();
+        const claims = raw
+            .split('\n')
+            .filter(line => /^\d+[\).]/.test(line))
+            .map(line => line.replace(/^\d+[\).\s]*/, '').trim());
 
-                console.log(`[1.1] Found ${claims.length} claims using fallback model.`);
-                return claims;
-            } catch (fallbackErr) {
-                console.error('[1-FALLBACK-ERROR] Fallback also failed:', fallbackErr.message);
-                throw new Error(`Both primary and fallback models failed: ${err.message}`);
-            }
-        }
-        
-        throw new Error('Gemini claim extraction failed');
+        console.log(`[1.1] Found ${claims.length} claims using Gemini fallback model.`);
+        return claims;
+    } catch (fallbackErr) {
+        console.error('[1-FALLBACK-ERROR] All models failed:', fallbackErr.message);
+        throw new Error('All claim extraction models failed. Please try again later.');
     }
 }
 
@@ -107,15 +133,9 @@ async function searchWeb(claim) {
     }
 }
 
-// STEP 3: Ask Gemini to validate claim against search results
+// STEP 3: Validate claim against search results
 async function validateClaimWithGemini(claim, snippets) {
-    let model;
-    let usingPrimary = true;
-    
-    try {
-        model = await getGeminiModel(true);
-
-        const prompt = `
+    const prompt = `
 You are an AI fact-checking assistant.
 
 A claim has been made, and here are 3-5 web snippets found via search engines.
@@ -129,50 +149,40 @@ Sources:
 ${snippets.map((s, i) => `${i + 1}. ${s.snippet}`).join('\n')}
 
 Answer:
-        `;
+    `;
 
+    // Try NVIDIA Llama model first (primary)
+    try {
+        console.log(`[3] Validating claim with NVIDIA model: ${NVIDIA_MODEL}`);
+        const response = await callNvidiaModel(prompt);
+        console.log(`[3] NVIDIA Llama decision:`, response);
+        return response.toLowerCase().includes("true");
+    } catch (err) {
+        console.error('[3-ERROR] NVIDIA Llama validation failed:', err.message);
+    }
+
+    // Fallback to Gemini primary model
+    try {
+        console.log('[3-FALLBACK] Retrying validation with Gemini primary model...');
+        const model = await getGeminiModel(true);
         const result = await model.generateContent(prompt);
         const answer = await result.response.text();
-
-        console.log(`[3] Gemini decision using ${usingPrimary ? 'primary' : 'fallback'} model:`, answer);
+        console.log(`[3] Gemini primary decision:`, answer);
         return answer.toLowerCase().includes("true");
     } catch (err) {
-        console.error('[3-ERROR] Gemini validation failed:', err.message);
-        
-        // Try fallback model if primary failed
-        if (usingPrimary) {
-            console.log('[3-FALLBACK] Retrying validation with fallback model...');
-            try {
-                usingPrimary = false;
-                model = await getGeminiModel(false);
-                
-                const prompt = `
-You are an AI fact-checking assistant.
+        console.error('[3-ERROR] Gemini primary validation failed:', err.message);
+    }
 
-A claim has been made, and here are 3-5 web snippets found via search engines.
-Decide whether the sources support the claim.
-
-Respond with ONLY "true" or "false".
-
-Claim: "${claim}"
-
-Sources:
-${snippets.map((s, i) => `${i + 1}. ${s.snippet}`).join('\n')}
-
-Answer:
-                `;
-
-                const result = await model.generateContent(prompt);
-                const answer = await result.response.text();
-
-                console.log(`[3] Gemini decision using fallback model:`, answer);
-                return answer.toLowerCase().includes("true");
-            } catch (fallbackErr) {
-                console.error('[3-FALLBACK-ERROR] Fallback validation also failed:', fallbackErr.message);
-                return null; // fallback to unknown
-            }
-        }
-        
+    // Final fallback to Gemini fallback model
+    try {
+        console.log('[3-FALLBACK] Retrying validation with Gemini fallback model...');
+        const model = await getGeminiModel(false);
+        const result = await model.generateContent(prompt);
+        const answer = await result.response.text();
+        console.log(`[3] Gemini fallback decision:`, answer);
+        return answer.toLowerCase().includes("true");
+    } catch (fallbackErr) {
+        console.error('[3-FALLBACK-ERROR] All validation models failed:', fallbackErr.message);
         return null; // fallback to unknown
     }
 }
