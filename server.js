@@ -18,6 +18,9 @@ app.use('/api/detect', detectRoute);
 const factCheckRoute = require('./routes/factCheckRoute');
 app.use('/api/factcheck', factCheckRoute);
 
+const imageDetectRoute = require('./routes/imageDetectRoute');
+app.use('/api/image-detect-ai', imageDetectRoute);
+
 app.get('/health', (req, res) => {
     res.status(200).json({ status: 'OK', message: 'Server is running' });
 });
