@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Groq Summarization Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        textarea {
+            width: 100%;
+            height: 200px;
+            padding: 15px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            resize: vertical;
+            margin-bottom: 20px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-bottom: 20px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .result {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 4px solid #007bff;
+            white-space: pre-wrap;
+            font-family: 'Courier New', monospace;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border-left-color: #dc3545;
+        }
+        .loading {
+            color: #007bff;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📝 Groq Content Summarization</h1>
+        <p>Enter your content below and get a bullet-point summary powered by Groq AI:</p>
+        
+        <textarea id="contentInput" placeholder="Paste your content here... (articles, documents, text, etc.)"></textarea>
+        
+        <button id="summarizeBtn" onclick="summarizeContent()">🚀 Summarize with Groq</button>
+        
+        <div id="result"></div>
+    </div>
+
+    <script>
+        async function summarizeContent() {
+            const content = document.getElementById('contentInput').value.trim();
+            const button = document.getElementById('summarizeBtn');
+            const resultDiv = document.getElementById('result');
+            
+            if (!content) {
+                resultDiv.innerHTML = '<div class="result error">Please enter some content to summarize.</div>';
+                return;
+            }
+            
+            // Show loading state
+            button.disabled = true;
+            button.textContent = '⏳ Summarizing...';
+            resultDiv.innerHTML = '<div class="result loading">Generating summary with Groq AI...</div>';
+            
+            try {
+                const response = await fetch('http://localhost:5000/api/summarize', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ content })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    resultDiv.innerHTML = `
+                        <div class="result">
+                            <h3>✨ Summary Generated:</h3>
+                            <p><strong>Model:</strong> ${data.model}</p>
+                            <p><strong>Input Length:</strong> ${data.input_length} characters</p>
+                            <p><strong>Summary Length:</strong> ${data.summary_length} characters</p>
+                            <hr>
+                            <h4>📋 Bullet Point Summary:</h4>
+                            ${data.summary}
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `<div class="result error">❌ Error: ${data.error}</div>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="result error">❌ Network Error: ${error.message}</div>`;
+            } finally {
+                // Reset button state
+                button.disabled = false;
+                button.textContent = '🚀 Summarize with Groq';
+            }
+        }
+        
+        // Add sample content for testing
+        document.getElementById('contentInput').value = `Artificial Intelligence (AI) has emerged as one of the most transformative technologies of the 21st century. It encompasses machine learning, natural language processing, computer vision, and robotics. AI systems can now perform tasks that traditionally required human intelligence, such as recognizing speech, making decisions, and solving complex problems.
+
+Machine learning, a subset of AI, enables computers to learn and improve from experience without being explicitly programmed. Deep learning, a type of machine learning, uses neural networks with multiple layers to process data and identify patterns. This technology has revolutionized fields like image recognition, natural language processing, and autonomous vehicles.
+
+The applications of AI are vast and growing rapidly. In healthcare, AI helps diagnose diseases, predict patient outcomes, and develop personalized treatment plans. In finance, it's used for fraud detection, algorithmic trading, and risk assessment. In transportation, AI powers self-driving cars and optimizes traffic flow. In education, it provides personalized learning experiences and automates administrative tasks.
+
+However, the rise of AI also brings challenges and concerns. There are worries about job displacement as automation increases. Privacy concerns arise from the vast amounts of data AI systems require. Ethical questions emerge about decision-making algorithms and potential biases. There are also concerns about AI safety and the potential for misuse.
+
+The future of AI holds immense promise. We can expect more sophisticated AI systems that can understand context, reason, and interact more naturally with humans. AI will likely become more integrated into our daily lives, from smart homes to wearable devices. The key will be developing AI responsibly, ensuring it benefits humanity while addressing the challenges it presents.`;
+    </script>
+</body>
+</html>
