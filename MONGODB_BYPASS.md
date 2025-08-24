@@ -25,7 +25,7 @@ The `mongoose` dependency is still listed in package.json but is not used in the
 The server will now start without requiring MongoDB:
 
 ```bash
-cd hacksky-server
+cd factora-server
 npm install  # installs all dependencies (including unused mongoose)
 node server.js
 ```

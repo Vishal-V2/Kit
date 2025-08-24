@@ -2,7 +2,7 @@
 
 ## 🚀 **Implementation Overview**
 
-The HackSky server now uses a robust fallback system for Gemini AI models:
+The Factora server now uses a robust fallback system for Gemini AI models:
 
 - **Primary Model**: `gemini-2.0-flash-exp` (Latest, fastest)
 - **Fallback Model**: `gemini-1.5-flash` (Stable, reliable)
@@ -122,4 +122,4 @@ const FALLBACK_MODEL = 'gemini-1.5-flash';
 3. **Update models** as newer versions become available
 4. **Test thoroughly** after model changes
 
-The fallback system ensures your HackSky extension works reliably even during model outages or rate limiting!
+The fallback system ensures your Factora extension works reliably even during model outages or rate limiting!
